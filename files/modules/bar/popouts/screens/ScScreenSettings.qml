@@ -111,28 +111,22 @@ ColumnLayout {
             text: Tr.tr("Resolution")
         }
 
-        Flow {
-            Layout.fillWidth: true
-            spacing: Tokens.spacing.extraSmall
-
-            Repeater {
-                model: root.resolutions
-
-                ScChip {
-                    required property string modelData
-
-                    text: modelData.replace("x", "×")
-                    checked: root.rule && `${root.rule.w}x${root.rule.h}` === modelData
-                    onClicked: {
-                        const [w, h] = modelData.split("x").map(Number);
-                        const best = root.modes.filter(m => m.w === w && m.h === h).sort((a, b) => b.rate - a.rate)[0];
-                        root.set({
-                            w,
-                            h,
-                            rate: Math.round(best.rate * 100) / 100
-                        });
-                    }
-                }
+        ScSplitSelect {
+            icon: "aspect_ratio"
+            fallbackText: Tr.tr("No modes")
+            options: root.resolutions.map(r => ({
+                        value: r,
+                        text: r.replace("x", "×")
+                    }))
+            current: root.rule ? `${root.rule.w}x${root.rule.h}` : null
+            onSelected: value => {
+                const [w, h] = value.split("x").map(Number);
+                const best = root.modes.filter(m => m.w === w && m.h === h).sort((a, b) => b.rate - a.rate)[0];
+                root.set({
+                    w,
+                    h,
+                    rate: Math.round(best.rate * 100) / 100
+                });
             }
         }
 

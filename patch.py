@@ -220,20 +220,35 @@ def build_host(blocks):
         if slot in SLOTS:
             lines.extend(blocks.get(slot, []))
         elif slot == "end":
+            # Unknown widgets' icons go last; their other edits (e.g. the switcher's)
+            # can't be placed here and are dropped for that widget to re-apply
             for name, block in blocks.items():
-                if name not in SLOTS:
+                if name not in SLOTS and block[0].strip().startswith("Entry {"):
                     lines.extend(block)
     return "\n".join(lines)
 
 
 def ensure_host(root):
-    """Create or repair the shared bar group: the group file (refreshed to the current
-    template, keeping every widget's icon) and the bar's two edits."""
+    """Create or repair the shared bar group: the group file and the bar's two edits.
+
+    An existing group file is left as it is apart from adding missing slot lines:
+    other tools edit it too (the plugin switcher changes its visibility lines), and
+    rebuilding it from the template would silently drop those edits."""
     host = root / HOST_FILE
-    current = host.read_text() if host.exists() else ""
-    wanted = build_host(host_blocks(current))
-    if wanted != current:
-        host.write_text(wanted)
+    if not host.exists():
+        host.write_text(build_host({}))
+    else:
+        lines = host.read_text().split("\n")
+        missing = [s for s in SLOTS if not any(l.strip() == f"// slot:{s}" for l in lines)]
+        ends = [i for i, l in enumerate(lines) if l.strip() == "// slot:end"]
+        if len(ends) == 1:
+            if missing:
+                lines[ends[0]:ends[0]] = [f"        // slot:{s}" for s in missing]
+                host.write_text("\n".join(lines))
+        else:
+            # Too broken to patch: rebuild, keeping every widget's icon, and say what may be lost
+            host.write_text(build_host(host_blocks("\n".join(lines))))
+            print(f"Rebuilt {HOST_FILE}; re-run caelestia-plugin-switcher/install.sh if you use it")
     # Re-apply the bar edits from scratch so a partial or stale set gets repaired.
     # If an anchor line was mangled beyond restoring, start from Caelestia's own copy
     # (only the plugins section edits these files).
