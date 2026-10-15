@@ -10,6 +10,8 @@ Item {
     id: root
 
     required property color colour
+    // The bar's plugin group hides entries with hidden set
+    readonly property bool hidden: Displays.settings.placement !== "right"
 
     implicitWidth: sizer.implicitHeight
     implicitHeight: sizer.implicitHeight

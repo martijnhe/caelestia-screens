@@ -23,6 +23,15 @@ ColumnLayout {
     readonly property var screen: Quickshell.screens.find(s => s.name === mon?.name) ?? null
     readonly property var brightnessMonitor: screen ? Brightness.getMonitorForScreen(screen) : null
     readonly property var caps: Displays.capsFor(mon?.name ?? "")
+    readonly property list<real> scales: rule ? Displays.supportedScales(rule.w, rule.h) : [1]
+    readonly property int scaleIndex: {
+        const s = rule?.scale ?? 1;
+        let best = 0;
+        for (let i = 1; i < scales.length; i++)
+            if (Math.abs(scales[i] - s) < Math.abs(scales[best] - s))
+                best = i;
+        return best;
+    }
 
     function set(changes: var): void {
         Displays.update(rule.output, changes);
@@ -94,6 +103,8 @@ ColumnLayout {
             }
 
             StyledSlider {
+                id: brightnessSlider
+
                 Layout.fillWidth: true
                 implicitHeight: Tokens.padding.medium * 3
                 value: root.brightnessMonitor?.brightness ?? 0
@@ -105,6 +116,28 @@ ColumnLayout {
                 horizontalAlignment: Text.AlignRight
                 text: `${Math.round((root.brightnessMonitor?.brightness ?? 0) * 100)}%`
                 font: Tokens.font.body.small
+            }
+        }
+
+        StyledText {
+            Layout.fillWidth: true
+            visible: root.brightnessMonitor !== null
+            text: root.brightnessMonitor?.isDdc ? qsTr("Hardware brightness over DDC/CI") : root.brightnessMonitor?.isAppleDisplay ? qsTr("Apple display brightness") : qsTr("Backlight brightness")
+            color: Colours.palette.m3outline
+            font: Tokens.font.body.small
+        }
+
+        // The shell reads brightness once; re-read it so changes from FlightDeck or the
+        // monitor's own buttons show up
+        Timer {
+            interval: 5000
+            repeat: true
+            triggeredOnStart: true
+            running: root.visible && root.brightnessMonitor !== null
+            onTriggered: {
+                const m = root.brightnessMonitor;
+                if (m && !m.timer.running && !brightnessSlider.dragging)
+                    m.initBrightness();
             }
         }
 
@@ -164,7 +197,7 @@ ColumnLayout {
             spacing: Tokens.spacing.small
 
             Repeater {
-                model: [1, 1.25, 1.5, 1.75, 2]
+                model: [1, 1.25, 1.5, 1.75, 2].filter(s => root.scales.some(v => Math.abs(v - s) < 0.001))
 
                 ScChip {
                     required property real modelData
@@ -178,18 +211,77 @@ ColumnLayout {
             }
         }
 
+        // Steps through the scales this mode supports, starting at 1×
         StyledSlider {
             Layout.fillWidth: true
             Layout.rightMargin: Tokens.padding.extraSmall
             implicitHeight: Tokens.padding.medium * 2
-            from: 0.5
-            to: 3
-            stepSize: 0.05
-            value: root.rule?.scale ?? 1
+            enabled: root.scales.length > 1
+            from: 0
+            to: Math.max(1, root.scales.length - 1)
+            stepSize: 1
+            value: root.scaleIndex
             interactionOnMove: false
+            // v is the 0–1 position along the track
             onInteraction: v => root.set({
-                scale: Math.round(v * 20) / 20
+                scale: root.scales[Math.max(0, Math.min(root.scales.length - 1, Math.round(v * (root.scales.length - 1))))]
             })
+        }
+
+        // A tick and label under every scale the slider can stop at
+        Item {
+            id: ticks
+
+            // Where the slider's handle centre sits at each step
+            readonly property real inset: Tokens.spacing.extraSmall + 2
+            readonly property real track: width - Tokens.spacing.extraSmall - 4
+
+            Layout.fillWidth: true
+            Layout.rightMargin: Tokens.padding.extraSmall
+            visible: root.scales.length > 1
+            implicitHeight: 6 + Tokens.spacing.extraSmall + tickLabelMetrics.height
+
+            TextMetrics {
+                id: tickLabelMetrics
+
+                font: Tokens.font.body.small
+                text: "2.67"
+            }
+
+            Repeater {
+                model: root.scales
+
+                Item {
+                    id: tick
+
+                    required property real modelData
+                    required property int index
+                    readonly property bool current: index === root.scaleIndex
+                    // Label every step when they fit, otherwise every other one counted from the last
+                    readonly property bool labelled: ticks.track / Math.max(1, root.scales.length - 1) > tickLabelMetrics.width + Tokens.spacing.small || (root.scales.length - 1 - index) % 2 === 0
+
+                    x: ticks.inset + ticks.track * index / Math.max(1, root.scales.length - 1)
+                    height: ticks.height
+
+                    StyledRect {
+                        x: -width / 2
+                        implicitWidth: 2
+                        implicitHeight: 6
+                        radius: 1
+                        color: tick.current ? Colours.palette.m3primary : Colours.palette.m3outlineVariant
+                    }
+
+                    StyledText {
+                        visible: tick.labelled
+                        // Keep the first and last labels inside the row
+                        x: Math.max(-tick.x, Math.min(ticks.width - tick.x - width, -width / 2))
+                        y: 6 + Tokens.spacing.extraSmall
+                        text: `${+tick.modelData.toFixed(2)}×`
+                        color: tick.current ? Colours.palette.m3primary : Colours.palette.m3onSurfaceVariant
+                        font: Tokens.font.body.small
+                    }
+                }
+            }
         }
 
         ScSection {

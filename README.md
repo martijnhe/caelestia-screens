@@ -10,7 +10,7 @@ Built against `caelestia-shell` 2.5.0, `quickshell-git` 0.3.1 and Hyprland 0.56 
 
 - **Layout**: screens drawn at their real size and position. Drag a screen and it snaps flush to a
   neighbour (no gaps, no overlaps); dropping one above or below another centres it
-- **Per screen**: on/off, resolution, refresh rate, scale (presets and slider), rotation,
+- **Per screen**: on/off, resolution, refresh rate, scale (presets and a slider from 1× up through the scales the mode supports), rotation,
   mirroring, VRR (off / always / fullscreen / games & video), 8-bit / 10-bit / HDR
 - **Only what the screen supports**: each screen's EDID is read with `edid-decode` and shown as
   a line like "10-bit · HDR10 up to 359 nits · BT.2020 · VRR 48–120 Hz". VRR needs a continuous
@@ -27,11 +27,12 @@ Built against `caelestia-shell` 2.5.0, `quickshell-git` 0.3.1 and Hyprland 0.56 
 - **Profiles**: save the current layout; Apply it later, or let **Apply on connect** restore it
   when exactly those screens are plugged in. Screens are matched by make, model and serial, so
   connector names can change
-- **Dashboard tab**: shown next to the other dashboard tabs; turn it on or off in Nexus > Dashboard >
-  Dashboard tabs (or `dashboardTab` in `screens.json`)
+- **Right bar or dashboard tab**: pick one with Show in on the pane (see Placement)
 - **Works with FlightDeck**: when [FlightDeck](https://github.com/AstraSuite/FlightDeck) is installed, the
   monitor rules are shared with it in `astra-flightdeck.lua`, so the two never fight over your layout, and
-  the tab has an Open in FlightDeck button
+  the tab has an Open in FlightDeck button. Night light, its temperature and the Keep countdown are mirrored
+  with FlightDeck's `flightdeck-displays.json`, and the tab refreshes when FlightDeck saves. FlightDeck stays
+  optional: without it none of its files are created
 
 ## Compared with omarchy-screens
 
@@ -41,7 +42,7 @@ rewrite for Caelestia, not a copy of its code. What it covers:
 | Feature in omarchy-screens | Here |
 | --- | --- |
 | Drag layout, flush edge snap, centre snap when stacking | Yes |
-| Resolution, refresh, scale, rotation, mirror, turn a screen on/off | Yes (scale slider in 0.05 steps, not 0.01) |
+| Resolution, refresh, scale, rotation, mirror, turn a screen on/off | Yes (the scale slider steps through the scales the mode supports, from 1× to 3×) |
 | Apply with 20 s Keep / Revert, Undo | Yes |
 | Brightness for the selected screen (backlight or DDC) | Yes |
 | Night light, 1500–6500 K | Yes |
@@ -76,14 +77,17 @@ screen brightness.
   puts `require("screens-monitors")` in their place in `hypr-user.lua`
 - `~/.config/caelestia/display-profiles.json`: layout profiles and Apply on connect, shared with FlightDeck
   (a profile saved in either one shows up in the other)
-- `~/.config/caelestia/screens.json`: night light, the tab toggle and where rules are written
+- `~/.config/caelestia/screens.json`: night light, placement and where rules are written
+- With FlightDeck: `~/.config/caelestia/flightdeck-displays.json`, kept in step with the night light and
+  countdown settings in `screens.json`
 - `~/.config/caelestia/screens-backup/`: your original `hypr-user.lua`
 
 ## Install
 
 Installs into your user copy of the Caelestia shell (`~/.config/quickshell/caelestia`, created from
 `/etc/xdg/quickshell/caelestia` if it doesn't exist yet). The widget's QML goes to `modules/screens/`, and
-every line added to a shell file ends with `// plugin:screens`.
+its service to `services/Displays.qml` (shared with an older right-bar copy of the widget, if one is
+installed), and every line added to a shell file ends with `// plugin:screens`.
 
 ```bash
 ./install.sh               # shares monitor rules with FlightDeck when it's installed
@@ -93,17 +97,17 @@ kill $(pgrep -x qs); qs -c caelestia -n -d
 
 Re-running `install.sh` is safe and switches between the two modes.
 
-## Placement (optional)
+## Placement
 
-With [caelestia-plugin-switcher](../caelestia-plugin-switcher) installed, this plugin can also be placed
-in the dashboard's top strip instead of the right bar. Open **Nexus → Dashboard → Plugin switches**
-and pick for this plugin:
+Pick where the widget shows with **Show in** at the bottom of the Screens pane:
 
-- **Off**: hidden everywhere
-- **Right bar**: the icon in the plugin group above the clock (default)
-- **Top bar**: a tab in the dashboard, next to LocalSend and Notes
+- **Right bar**: an icon in the plugin group above the clock, opening the pane as a popout. The
+  installer adds that group to the bar if no other caelestia-* widget has
+- **Dashboard**: a tab in the dashboard (default)
+- **Off**: hidden everywhere; turn it back on with the Screens button in Nexus > Dashboard > Dashboard tabs
 
-The tab is a fixed 840×480 pane with the same content as the popout.
+The plugin switcher isn't needed. When [caelestia-plugin-switcher](../caelestia-plugin-switcher) is
+installed, the choice is kept in step with its Plugin switches page (`plugin-toggles.json`).
 
 ## Uninstall
 

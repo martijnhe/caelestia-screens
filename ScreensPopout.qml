@@ -18,6 +18,18 @@ ColumnLayout {
     spacing: Tokens.spacing.small
 
     Component.onCompleted: Displays.refresh()
+    onVisibleChanged: {
+        if (visible)
+            Displays.refresh();
+    }
+
+    // FlightDeck (or hyprctl) can change screens live without any Hyprland event
+    Timer {
+        interval: 2000
+        repeat: true
+        running: root.visible && !Displays.dirty && !Displays.confirming
+        onTriggered: Displays.refresh()
+    }
 
     // Header
     RowLayout {
@@ -223,6 +235,49 @@ ColumnLayout {
                     disabled: Displays.dirty
                     onClicked: Displays.saveProfile()
                 }
+            }
+        }
+    }
+
+    // Placement: the widget moves itself, no plugin switcher needed
+    RowLayout {
+        Layout.fillWidth: true
+        Layout.rightMargin: Tokens.padding.extraSmall
+        spacing: Tokens.spacing.small
+
+        StyledText {
+            Layout.fillWidth: true
+            text: qsTr("Show in")
+            color: Colours.palette.m3onSurfaceVariant
+            font: Tokens.font.body.small
+        }
+
+        Repeater {
+            model: [
+                {
+                    value: "right",
+                    icon: "side_navigation",
+                    text: qsTr("Right bar")
+                },
+                {
+                    value: "top",
+                    icon: "tab",
+                    text: qsTr("Dashboard")
+                },
+                {
+                    value: "off",
+                    icon: "visibility_off",
+                    text: qsTr("Off")
+                }
+            ]
+
+            ScChip {
+                required property var modelData
+
+                text: modelData.text
+                icon: modelData.icon
+                checked: Displays.settings.placement === modelData.value
+                onClicked: Displays.setPlacement(modelData.value)
             }
         }
     }

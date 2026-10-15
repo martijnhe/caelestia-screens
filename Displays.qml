@@ -19,8 +19,13 @@ Singleton {
     readonly property string configHome: Quickshell.env("XDG_CONFIG_HOME") || `${home}/.config`
     readonly property string rulesPath: `${configHome}/caelestia/screens-monitors.lua`
     readonly property string flightDeckPath: `${configHome}/caelestia/astra-flightdeck.lua`
+    readonly property string flightDeckSettingsPath: `${configHome}/caelestia/flightdeck-displays.json`
     readonly property bool sharedRules: settings.rulesTarget === "flightdeck"
     property bool flightDeckInstalled
+    property bool deckSettingsLoaded
+    property bool deckSettingsExist
+    property bool togglesSettled
+    property bool togglesExist
 
     property list<var> monitors: [] // live state from hyprctl
     property var caps: ({}) // name -> what the screen supports, from its EDID
@@ -101,6 +106,17 @@ Singleton {
             }
         }
         return scale;
+    }
+
+    // Scales from 1× to 3× that give a whole-pixel desktop size for this mode
+    function supportedScales(w: int, h: int): list<real> {
+        if (w <= 0 || h <= 0)
+            return [1];
+        const out = [];
+        for (let tick = 120; tick <= 360; tick++)
+            if ((w * 120) % tick === 0 && (h * 120) % tick === 0)
+                out.push(tick / 120);
+        return out;
     }
 
     function luaRule(r: var): string {
@@ -381,8 +397,63 @@ Singleton {
         flightDeckFile.setText(next);
     }
 
+    // ---------- Placement ----------
+
+    // Where the widget shows: "right" (icon in the bar's plugin group), "top" (dashboard
+    // tab) or "off". Mirrored with caelestia-plugin-switcher's plugin-toggles.json when
+    // that file exists, so the switcher is optional.
+    function setPlacement(place: string): void {
+        if (settings.placement !== place)
+            settings.placement = place;
+    }
+
+    function resolvePlacement(): void {
+        if (!settingsLoaded || !togglesSettled)
+            return;
+        const theirs = togglesExist ? (toggles.placement ?? {}).screens : undefined;
+        if (theirs && theirs !== settings.placement)
+            settings.placement = theirs;
+        else if (!settings.placement)
+            settings.placement = settings.dashboardTab ? "top" : "off";
+        pushPlacement();
+    }
+
+    function pushPlacement(): void {
+        if (!togglesExist || !settings.placement || (toggles.placement ?? {}).screens === settings.placement)
+            return;
+        toggles.placement = Object.assign({}, toggles.placement ?? {}, {
+            screens: settings.placement
+        });
+    }
+
     function openFlightDeck(): void {
         Quickshell.execDetached(["flightdeck"]);
+    }
+
+    // Night light and the revert countdown are mirrored with FlightDeck's
+    // flightdeck-displays.json, but only when FlightDeck is installed.
+    function pullDeckSettings(): void {
+        if (!flightDeckInstalled || !settingsLoaded || !deckSettingsLoaded || !deckSettingsExist)
+            return;
+        if (settings.nightLight !== deckSettings.nightLight)
+            settings.nightLight = deckSettings.nightLight;
+        if (settings.kelvin !== deckSettings.kelvin)
+            settings.kelvin = deckSettings.kelvin;
+        if (settings.revertSeconds !== deckSettings.revertSeconds)
+            settings.revertSeconds = deckSettings.revertSeconds;
+    }
+
+    function pushDeckSettings(): void {
+        if (!flightDeckInstalled || !settingsLoaded || !deckSettingsLoaded)
+            return;
+        // FlightDeck clamps the countdown to 5–120 s
+        const seconds = Math.max(5, Math.min(120, settings.revertSeconds));
+        if (deckSettingsExist && deckSettings.nightLight === settings.nightLight && deckSettings.kelvin === settings.kelvin && deckSettings.revertSeconds === seconds)
+            return;
+        deckSettingsExist = true;
+        deckSettings.nightLight = settings.nightLight;
+        deckSettings.kelvin = settings.kelvin;
+        deckSettings.revertSeconds = seconds;
     }
 
     // Writes the monitors file; keeps rules for outputs that aren't connected now
@@ -506,6 +577,7 @@ Singleton {
         settings.nightLight = on;
         settings.kelvin = kelvin;
         sunsetProc.running = false;
+        Quickshell.execDetached(["pkill", "-x", "hyprsunset"]);
         if (on)
             sunsetRestart.restart();
     }
@@ -523,9 +595,15 @@ Singleton {
     Process {
         id: monitorsProc
 
+        property string last
+
         command: ["hyprctl", "monitors", "all", "-j"]
         stdout: StdioCollector {
             onStreamFinished: {
+                // Polled while the pane is open; only rebuild when something changed
+                if (text === monitorsProc.last && root.monitors.length > 0)
+                    return;
+                monitorsProc.last = text;
                 try {
                     root.monitors = JSON.parse(text).filter(m => !m.name.startsWith("FALLBACK") && !m.name.startsWith("HEADLESS"));
                 } catch (e) {
@@ -583,7 +661,7 @@ Singleton {
     Process {
         id: sunsetProc
 
-        command: ["hyprsunset", "-t", `${root.settings.kelvin}`]
+        command: ["sh", "-c", "pgrep -x hyprsunset >/dev/null || exec hyprsunset -t \"$1\"", "sh", `${root.settings.kelvin}`]
     }
 
     Timer {
@@ -633,6 +711,8 @@ Singleton {
         function onRawEvent(event: HyprlandEvent): void {
             if (event.name === "monitoradded" || event.name === "monitorremoved") {
                 hotplugTimer.restart();
+            } else if (event.name === "configreloaded") {
+                delayedRefresh.restart();
             }
         }
 
@@ -675,12 +755,70 @@ Singleton {
         path: root.flightDeckPath
         printErrors: false
         blockLoading: true
+        watchChanges: true
+        // FlightDeck (or a hand edit) changed the rules: pick up the new live state
+        onFileChanged: {
+            reload();
+            delayedRefresh.restart();
+        }
+    }
+
+    FileView {
+        path: root.flightDeckSettingsPath
+        watchChanges: true
+        printErrors: false
+        onFileChanged: reload()
+        onAdapterUpdated: {
+            if (root.flightDeckInstalled)
+                writeAdapter();
+        }
+        onLoadFailed: {
+            root.deckSettingsExist = false;
+            root.deckSettingsLoaded = true;
+            root.pushDeckSettings();
+        }
+        onLoaded: {
+            root.deckSettingsExist = true;
+            root.deckSettingsLoaded = true;
+            root.pullDeckSettings();
+        }
+
+        JsonAdapter {
+            id: deckSettings
+
+            property bool nightLight: false
+            property int kelvin: 4000
+            property int revertSeconds: 20
+        }
+    }
+
+    Connections {
+        function onNightLightChanged(): void {
+            root.pushDeckSettings();
+        }
+        function onKelvinChanged(): void {
+            root.pushDeckSettings();
+        }
+        function onRevertSecondsChanged(): void {
+            root.pushDeckSettings();
+        }
+        function onPlacementChanged(): void {
+            root.pushPlacement();
+        }
+
+        target: root.settings
     }
 
     Process {
         command: ["sh", "-c", "command -v flightdeck"]
         running: true
-        onExited: code => root.flightDeckInstalled = code === 0
+        onExited: code => {
+            root.flightDeckInstalled = code === 0;
+            if (root.deckSettingsExist)
+                root.pullDeckSettings();
+            else
+                root.pushDeckSettings();
+        }
     }
 
     FileView {
@@ -704,6 +842,11 @@ Singleton {
         onLoaded: {
             root.settingsLoaded = true;
             root.migrateProfiles();
+            if (root.deckSettingsExist)
+                root.pullDeckSettings();
+            else
+                root.pushDeckSettings();
+            root.resolvePlacement();
             if (root.settings.nightLight)
                 sunsetRestart.restart();
         }
@@ -717,8 +860,36 @@ Singleton {
             property int kelvin: 4000
             property int revertSeconds: 20
             property bool notifications: true
-            property bool dashboardTab: true
+            property bool dashboardTab: true // before placement; read once to pick the first placement
+            property string placement: ""
             property string rulesTarget: "screens"
+        }
+    }
+
+    FileView {
+        path: `${root.configHome}/caelestia/plugin-toggles.json`
+        watchChanges: true
+        printErrors: false
+        onFileChanged: reload()
+        onAdapterUpdated: {
+            if (root.togglesExist)
+                writeAdapter();
+        }
+        onLoadFailed: {
+            root.togglesExist = false;
+            root.togglesSettled = true;
+            root.resolvePlacement();
+        }
+        onLoaded: {
+            root.togglesExist = true;
+            root.togglesSettled = true;
+            root.resolvePlacement();
+        }
+
+        JsonAdapter {
+            id: toggles
+
+            property var placement: ({})
         }
     }
 

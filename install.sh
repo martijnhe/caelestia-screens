@@ -32,15 +32,11 @@ data["rulesTarget"] = sys.argv[2]
 data.setdefault("dashboardTab", True)
 path.write_text(json.dumps(data, indent=4) + "\n")
 EOF
-python3 "$src/patch.py" apply "$target"
+python3 "$src/patch.py" apply "$target" "$conf/caelestia/shell.json"
 
 if [[ $mode == flightdeck ]]; then
   echo "Installed. Monitor rules are shared with FlightDeck (astra-flightdeck.lua)."
 else
   echo "Installed. Monitor rules are in screens-monitors.lua."
 fi
-if grep -qx '[[:space:]]*id: screensTabComponent' "$target/modules/dashboard/Content.qml" 2>/dev/null; then
-  echo "The Screens tab is managed by the plugin switcher; set it in Nexus > Dashboard > Plugin switches."
-else
-  echo "The Screens tab is in the dashboard; turn it on or off in Nexus > Dashboard > Dashboard tabs."
-fi
+echo "Pick where it shows (right bar, dashboard tab or off) with Show in at the bottom of the Screens pane."
