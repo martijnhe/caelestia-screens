@@ -4,10 +4,11 @@ import QtQuick
 import QtQuick.Layouts
 import Quickshell
 import Caelestia.Config
-import Caelestia.I18n
 import qs.components
 import qs.components.controls
 import qs.services
+import martijnhe.screens
+import martijnhe.screens.components
 
 // Settings for the selected screen. Everything except brightness is drafted and
 // takes effect with Apply.
@@ -52,12 +53,12 @@ ColumnLayout {
     }
 
     ScToggle {
-        label: Tr.tr("Enabled")
-        description: root.rule?.disabled ? Tr.tr("This screen is off") : `${root.mon?.make ?? ""} ${root.mon?.model ?? ""}`
+        label: qsTr("Enabled")
+        description: root.rule?.disabled ? qsTr("This screen is off") : `${root.mon?.make ?? ""} ${root.mon?.model ?? ""}`
         isOn: !(root.rule?.disabled ?? false)
         onToggled: value => {
             if (!value && Displays.enabledCount <= 1 && !root.rule.disabled)
-                Displays.fail(Tr.tr("At least one screen must stay on"));
+                Displays.fail(qsTr("At least one screen must stay on"));
             else
                 root.set({
                     disabled: !value
@@ -108,12 +109,12 @@ ColumnLayout {
         }
 
         ScSection {
-            text: Tr.tr("Resolution")
+            text: qsTr("Resolution")
         }
 
         ScSplitSelect {
             icon: "aspect_ratio"
-            fallbackText: Tr.tr("No modes")
+            fallbackText: qsTr("No modes")
             options: root.resolutions.map(r => ({
                         value: r,
                         text: r.replace("x", "×")
@@ -131,7 +132,7 @@ ColumnLayout {
         }
 
         ScSection {
-            text: Tr.tr("Refresh rate")
+            text: qsTr("Refresh rate")
         }
 
         Flow {
@@ -154,7 +155,7 @@ ColumnLayout {
         }
 
         ScSection {
-            text: Tr.tr("Scale · %1×").arg((+(root.rule?.scale ?? 1)).toFixed(2))
+            text: qsTr("Scale · %1×").arg((+(root.rule?.scale ?? 1)).toFixed(2))
         }
 
         RowLayout {
@@ -192,7 +193,7 @@ ColumnLayout {
         }
 
         ScSection {
-            text: Tr.tr("Rotation")
+            text: qsTr("Rotation")
         }
 
         RowLayout {
@@ -203,7 +204,7 @@ ColumnLayout {
                 model: [
                     {
                         t: 0,
-                        label: Tr.tr("Normal")
+                        label: qsTr("Normal")
                     },
                     {
                         t: 1,
@@ -234,7 +235,7 @@ ColumnLayout {
 
         ScSection {
             visible: Displays.monitors.length > 1
-            text: Tr.tr("Mirror")
+            text: qsTr("Mirror")
         }
 
         Flow {
@@ -243,7 +244,7 @@ ColumnLayout {
             spacing: Tokens.spacing.extraSmall
 
             ScChip {
-                text: Tr.tr("Off")
+                text: qsTr("Off")
                 checked: !(root.rule?.mirror)
                 onClicked: root.set({
                     mirror: ""
@@ -256,7 +257,7 @@ ColumnLayout {
                 ScChip {
                     required property var modelData
 
-                    text: Tr.tr("Mirror %1").arg(Displays.label(modelData))
+                    text: qsTr("Mirror %1").arg(Displays.label(modelData))
                     checked: root.rule?.mirror === modelData.name
                     onClicked: root.set({
                         mirror: modelData.name
@@ -266,13 +267,13 @@ ColumnLayout {
         }
 
         ScSection {
-            text: root.caps.vrr && root.caps.known ? Tr.tr("Variable refresh (VRR) · %1–%2 Hz").arg(root.caps.vrrMin).arg(root.caps.vrrMax) : Tr.tr("Variable refresh (VRR)")
+            text: root.caps.vrr && root.caps.known ? qsTr("Variable refresh (VRR) · %1–%2 Hz").arg(root.caps.vrrMin).arg(root.caps.vrrMax) : qsTr("Variable refresh (VRR)")
         }
 
         StyledText {
             Layout.fillWidth: true
             visible: !root.caps.vrr
-            text: root.caps.vrrMax ? Tr.tr("Not supported: this screen runs at a fixed %1–%2 Hz.").arg(root.caps.vrrMin).arg(root.caps.vrrMax) : Tr.tr("Not supported by this screen.")
+            text: root.caps.vrrMax ? qsTr("Not supported: this screen runs at a fixed %1–%2 Hz.").arg(root.caps.vrrMin).arg(root.caps.vrrMax) : qsTr("Not supported by this screen.")
             color: Colours.palette.m3outline
             font: Tokens.font.body.small
             wrapMode: Text.Wrap
@@ -286,19 +287,19 @@ ColumnLayout {
                 model: [
                     {
                         v: 0,
-                        label: Tr.tr("Off")
+                        label: qsTr("Off")
                     },
                     {
                         v: 1,
-                        label: Tr.tr("Always")
+                        label: qsTr("Always")
                     },
                     {
                         v: 2,
-                        label: Tr.tr("Fullscreen")
+                        label: qsTr("Fullscreen")
                     },
                     {
                         v: 3,
-                        label: Tr.tr("Games & video")
+                        label: qsTr("Games & video")
                     }
                 ]
 
@@ -316,13 +317,13 @@ ColumnLayout {
         }
 
         ScSection {
-            text: Tr.tr("Colour")
+            text: qsTr("Colour")
         }
 
         StyledText {
             Layout.fillWidth: true
             visible: root.caps.known && (!root.caps.hdr || root.caps.bpc < 10)
-            text: !root.caps.hdr && root.caps.bpc < 10 ? Tr.tr("This screen is %1-bit without HDR.").arg(root.caps.bpc) : !root.caps.hdr ? Tr.tr("This screen doesn't support HDR.") : Tr.tr("HDR needs a 10-bit screen.")
+            text: !root.caps.hdr && root.caps.bpc < 10 ? qsTr("This screen is %1-bit without HDR.").arg(root.caps.bpc) : !root.caps.hdr ? qsTr("This screen doesn't support HDR.") : qsTr("HDR needs a 10-bit screen.")
             color: Colours.palette.m3outline
             font: Tokens.font.body.small
             wrapMode: Text.Wrap
@@ -333,7 +334,7 @@ ColumnLayout {
             spacing: Tokens.spacing.extraSmall
 
             ScChip {
-                text: Tr.tr("8-bit")
+                text: qsTr("8-bit")
                 checked: (root.rule?.bitdepth ?? 8) === 8 && !(root.rule?.hdr)
                 onClicked: root.set({
                     bitdepth: 8,
@@ -342,7 +343,7 @@ ColumnLayout {
             }
 
             ScChip {
-                text: Tr.tr("10-bit")
+                text: qsTr("10-bit")
                 checked: (root.rule?.bitdepth ?? 8) === 10 && !(root.rule?.hdr)
                 disabled: root.caps.bpc < 10
                 onClicked: root.set({
@@ -352,7 +353,7 @@ ColumnLayout {
             }
 
             ScChip {
-                text: Tr.tr("HDR")
+                text: qsTr("HDR")
                 icon: "hdr_on"
                 checked: root.rule?.hdr ?? false
                 disabled: !root.caps.hdr || root.caps.bpc < 10

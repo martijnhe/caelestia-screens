@@ -1,0 +1,24 @@
+{
+    "name": "screens",
+    "author": "martijnhe",
+    "version": "2.0.0",
+    "description": "Monitor layout, resolution and per-screen settings in the bar.",
+    "homepage": "https://github.com/martijnhe/caelestia-screens",
+    "requires": ">=2.5.0",
+    "entryPoints": [
+        {
+            "type": "bar-entry",
+            "source": "BarEntry.qml",
+            "properties": {
+                "name": "screens"
+            }
+        },
+        {
+            "type": "bar-popout",
+            "source": "ScreensPopout.qml",
+            "properties": {
+                "entry": "screens"
+            }
+        }
+    ]
+}

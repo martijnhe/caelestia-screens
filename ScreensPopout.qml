@@ -1,19 +1,17 @@
 pragma ComponentBehavior: Bound
 
-import "./screens"
 import QtQuick
 import QtQuick.Layouts
 import Caelestia.Config
-import Caelestia.I18n
 import qs.components
 import qs.components.containers
 import qs.components.controls
 import qs.services
+import martijnhe.screens
+import martijnhe.screens.components
 
 ColumnLayout {
     id: root
-
-    required property PopoutState popouts
 
     width: 440
     implicitWidth: 440
@@ -40,16 +38,23 @@ ColumnLayout {
             spacing: 0
 
             StyledText {
-                text: Tr.tr("Screens")
+                text: qsTr("Screens")
                 font: Tokens.font.body.builders.medium.weight(Font.Medium).build()
             }
 
             StyledText {
                 Layout.fillWidth: true
-                text: Displays.dirty ? Tr.tr("Unapplied changes") : Tr.trN("%n screen", "%n screens", Displays.monitors.length)
+                text: Displays.dirty ? qsTr("Unapplied changes") : `${Displays.monitors.length === 1 ? qsTr("%n screen", "", Displays.monitors.length) : qsTr("%n screens", "", Displays.monitors.length)}${Displays.sharedRules ? qsTr(" · shared with FlightDeck") : ""}`
                 color: Displays.dirty ? Colours.palette.m3primary : Colours.palette.m3onSurfaceVariant
                 font: Tokens.font.body.small
             }
+        }
+
+        IconButton {
+            type: IconButton.Text
+            icon: "open_in_new"
+            visible: Displays.flightDeckInstalled
+            onClicked: Displays.openFlightDeck()
         }
 
         IconButton {
@@ -73,7 +78,7 @@ ColumnLayout {
     StyledText {
         Layout.fillWidth: true
         horizontalAlignment: Text.AlignHCenter
-        text: Tr.tr("Drag screens to arrange them; they snap together")
+        text: qsTr("Drag screens to arrange them; they snap together")
         color: Colours.palette.m3outline
         font: Tokens.font.label.small
     }
@@ -103,12 +108,12 @@ ColumnLayout {
 
             // Night light
             ScSection {
-                text: Tr.tr("Night light")
+                text: qsTr("Night light")
             }
 
             ScToggle {
-                label: Tr.tr("Night light")
-                description: Tr.tr("Warmer colours on all screens (%1 K)").arg(Displays.settings.kelvin)
+                label: qsTr("Night light")
+                description: qsTr("Warmer colours on all screens (%1 K)").arg(Displays.settings.kelvin)
                 isOn: Displays.settings.nightLight
                 onToggled: value => Displays.setNightLight(value, Displays.settings.kelvin)
             }
@@ -145,20 +150,20 @@ ColumnLayout {
 
             // Profiles
             ScSection {
-                text: Tr.tr("Profiles")
+                text: qsTr("Profiles")
             }
 
             StyledText {
                 Layout.fillWidth: true
-                visible: Displays.settings.profiles.length === 0
-                text: Tr.tr("Save a layout to restore it later, or automatically when its screens are connected.")
+                visible: Displays.profileStore.profiles.length === 0
+                text: qsTr("Save a layout to restore it later, or automatically when its screens are connected.")
                 color: Colours.palette.m3onSurfaceVariant
                 font: Tokens.font.body.small
                 wrapMode: Text.Wrap
             }
 
             Repeater {
-                model: Displays.settings.profiles
+                model: Displays.profileStore.profiles
 
                 RowLayout {
                     id: profile
@@ -186,7 +191,7 @@ ColumnLayout {
                     TextButton {
                         type: TextButton.Tonal
                         visible: profile.matches
-                        text: Tr.tr("Apply")
+                        text: qsTr("Apply")
                         disabled: Displays.confirming
                         onClicked: Displays.applyProfile(profile.modelData)
                     }
@@ -206,15 +211,15 @@ ColumnLayout {
 
                 ScToggle {
                     Layout.fillWidth: true
-                    label: Tr.tr("Apply on connect")
-                    description: Tr.tr("Restore a saved layout when its screens are plugged in")
-                    isOn: Displays.settings.autoApply
-                    onToggled: value => Displays.settings.autoApply = value
+                    label: qsTr("Apply on connect")
+                    description: qsTr("Restore a saved layout when its screens are plugged in")
+                    isOn: Displays.profileStore.autoApply
+                    onToggled: value => Displays.profileStore.autoApply = value
                 }
 
                 TextButton {
                     type: TextButton.Tonal
-                    text: Tr.tr("Save layout")
+                    text: qsTr("Save layout")
                     disabled: Displays.dirty
                     onClicked: Displays.saveProfile()
                 }
@@ -242,7 +247,7 @@ ColumnLayout {
             type: IconTextButton.Tonal
             verticalPadding: Tokens.padding.extraSmall
             disabled: !Displays.dirty || Displays.confirming
-            text: Tr.tr("Undo")
+            text: qsTr("Undo")
             icon: "undo"
             onClicked: Displays.discard()
         }
@@ -253,7 +258,7 @@ ColumnLayout {
             inactiveOnColour: Colours.palette.m3onPrimaryContainer
             verticalPadding: Tokens.padding.extraSmall
             disabled: !Displays.dirty || Displays.confirming
-            text: Displays.confirming ? Tr.tr("Keep? %1s").arg(Displays.countdown) : Tr.tr("Apply")
+            text: Displays.confirming ? qsTr("Keep? %1s").arg(Displays.countdown) : qsTr("Apply")
             icon: "check"
             onClicked: Displays.apply()
         }

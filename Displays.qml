@@ -5,7 +5,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Hyprland
 import Caelestia
-import Caelestia.I18n
+import martijnhe.screens.components
 
 // Monitor layout and settings for Hyprland's Lua config.
 //
@@ -18,6 +18,9 @@ Singleton {
     readonly property string home: Quickshell.env("HOME")
     readonly property string configHome: Quickshell.env("XDG_CONFIG_HOME") || `${home}/.config`
     readonly property string rulesPath: `${configHome}/caelestia/screens-monitors.lua`
+    readonly property string flightDeckPath: `${configHome}/caelestia/astra-flightdeck.lua`
+    readonly property bool sharedRules: settings.rulesTarget === "flightdeck"
+    property bool flightDeckInstalled
 
     property list<var> monitors: [] // live state from hyprctl
     property var caps: ({}) // name -> what the screen supports, from its EDID
@@ -32,6 +35,9 @@ Singleton {
     readonly property bool confirming: revertRules !== null
 
     property alias settings: settingsAdapter
+    property alias profileStore: profilesAdapter
+    property bool settingsLoaded
+    property bool profilesLoaded
 
     readonly property list<var> outputs: monitors.map(m => m.name)
     readonly property var selectedMonitor: monitors.find(m => m.name === selected) ?? monitors[0] ?? null
@@ -84,10 +90,23 @@ Singleton {
         };
     }
 
+    function validScale(w: int, h: int, scale: real): real {
+        if (w <= 0 || h <= 0 || scale <= 0)
+            return scale;
+        const base = Math.round(scale * 120);
+        for (let d = 0; d <= 120; d++) {
+            for (const tick of [base + d, base - d]) {
+                if (tick > 0 && (w * 120) % tick === 0 && (h * 120) % tick === 0)
+                    return tick / 120;
+            }
+        }
+        return scale;
+    }
+
     function luaRule(r: var): string {
         if (r.disabled)
             return `hl.monitor({ output = "${r.output}", disabled = true })`;
-        const parts = [`output = "${r.output}"`, `mode = "${r.w}x${r.h}@${r.rate.toFixed(2)}"`, `position = "${r.x}x${r.y}"`, `scale = ${(+r.scale).toFixed(2)}`, `transform = ${r.transform}`, `bitdepth = ${r.bitdepth}`, `vrr = ${r.vrr}`];
+        const parts = [`output = "${r.output}"`, `mode = "${r.w}x${r.h}@${r.rate.toFixed(2)}"`, `position = "${r.x}x${r.y}"`, `scale = ${(+r.scale).toFixed(6)}`, `transform = ${r.transform}`, `bitdepth = ${r.bitdepth}`, `vrr = ${r.vrr}`];
         if (r.hdr)
             parts.push(`cm = "hdr"`);
         if (r.mirror)
@@ -140,17 +159,17 @@ Singleton {
             return "";
         const parts = [`${c.bpc}-bit`];
         if (c.hdr)
-            parts.push(c.maxNits ? Tr.tr("HDR10 up to %1 nits").arg(c.maxNits) : Tr.tr("HDR10"));
+            parts.push(c.maxNits ? qsTr("HDR10 up to %1 nits").arg(c.maxNits) : qsTr("HDR10"));
         if (c.wideColour)
             parts.push("BT.2020");
-        parts.push(c.vrr ? Tr.tr("VRR %1–%2 Hz").arg(c.vrrMin).arg(c.vrrMax) : Tr.tr("no VRR"));
+        parts.push(c.vrr ? qsTr("VRR %1–%2 Hz").arg(c.vrrMin).arg(c.vrrMax) : qsTr("no VRR"));
         return parts.join(" · ");
     }
 
     function fail(message: string): void {
         lastError = message;
         if (settings.notifications)
-            Toaster.toast(Tr.tr("Screens"), message, "desktop_access_disabled", Toast.Error);
+            Toaster.toast(qsTr("Screens"), message, "desktop_access_disabled", Toast.Error);
     }
 
     // ---------- State ----------
@@ -172,6 +191,8 @@ Singleton {
     function update(name: string, changes: var): void {
         const d = Object.assign({}, draft);
         d[name] = Object.assign({}, d[name], changes);
+        if ("w" in changes || "h" in changes || "scale" in changes)
+            d[name].scale = validScale(d[name].w, d[name].h, d[name].scale);
         // Changing size or rotation can create overlaps; re-pack around the change
         if ("w" in changes || "h" in changes || "scale" in changes || "transform" in changes)
             d[name] = Object.assign(d[name], snap(d, name, d[name].x, d[name].y, true));
@@ -286,7 +307,7 @@ Singleton {
         if (!dirty)
             return;
         if (enabledCount === 0)
-            return fail(Tr.tr("At least one screen must stay on"));
+            return fail(qsTr("At least one screen must stay on"));
         revertRules = monitors.map(m => luaRule(ruleFromMonitor(m)));
         evalLua(Object.values(draft).map(luaRule), () => {
             countdown = settings.revertSeconds;
@@ -301,7 +322,7 @@ Singleton {
         dirty = false;
         writeRules(Object.values(draft));
         if (settings.notifications)
-            Toaster.toast(Tr.tr("Screens"), Tr.tr("Display settings saved"), "desktop_windows", Toast.Success);
+            Toaster.toast(qsTr("Screens"), qsTr("Display settings saved"), "desktop_windows", Toast.Success);
     }
 
     function revert(): void {
@@ -327,8 +348,47 @@ Singleton {
         proc.running = true;
     }
 
+    function flightDeckRule(r: var): string {
+        const lines = [`    output = "${r.output}",`, `    disabled = ${r.disabled ? "true" : "false"},`];
+        if (!r.disabled) {
+            lines.push(`    mode = "${r.w}x${r.h}@${r.rate.toFixed(2)}",`);
+            lines.push(`    position = "${r.x}x${r.y}",`);
+            lines.push(`    scale = ${(+r.scale).toFixed(6)},`);
+            if (r.transform > 0)
+                lines.push(`    transform = ${r.transform},`);
+            lines.push(`    bitdepth = ${r.bitdepth},`);
+            lines.push(`    vrr = ${r.vrr},`);
+            if (r.hdr)
+                lines.push(`    cm = "hdr",`);
+            if (r.mirror)
+                lines.push(`    mirror = "${r.mirror}",`);
+        }
+        return ["hl.monitor({", ...lines, "})"].join("\n");
+    }
+
+    function writeFlightDeckRules(rules: var): void {
+        flightDeckFile.reload();
+        const text = flightDeckFile.text() || "-- Generated by FlightDeck\n";
+        const section = /-- Monitors\n(?:hl\.monitor\(\{[\s\S]*?\}\)\n)*\n?/;
+        const old = text.match(section)?.[0] ?? "";
+        const current = rules.map(r => r.output);
+        const preserved = (old.match(/hl\.monitor\(\{[\s\S]*?\}\)/g) ?? []).filter(block => {
+            const out = block.match(/output\s*=\s*"([^"]*)"/)?.[1];
+            return out !== undefined && !current.includes(out);
+        });
+        const block = ["-- Monitors", ...rules.map(flightDeckRule), ...preserved, "", ""].join("\n");
+        const next = old ? text.replace(old, block) : `${text.replace(/\n*$/, "\n\n")}${block}`;
+        flightDeckFile.setText(next);
+    }
+
+    function openFlightDeck(): void {
+        Quickshell.execDetached(["flightdeck"]);
+    }
+
     // Writes the monitors file; keeps rules for outputs that aren't connected now
     function writeRules(rules: var): void {
+        if (sharedRules)
+            return writeFlightDeckRules(rules);
         const current = rules.map(r => r.output);
         const kept = (rulesFile.text() || "").match(/hl\.monitor\(\{[\s\S]*?\}\)/g) ?? [];
         const preserved = kept.filter(block => {
@@ -341,27 +401,81 @@ Singleton {
 
     // ---------- Profiles ----------
 
+    function sharedRule(r: var): var {
+        return {
+            output: r.output,
+            disabled: !!r.disabled,
+            mode: `${r.w}x${r.h}@${(+r.rate).toFixed(2)}`,
+            position: `${r.x}x${r.y}`,
+            scale: +r.scale,
+            transform: r.transform ?? 0,
+            vrr: r.vrr ?? 0,
+            bitdepth: r.bitdepth ?? 8,
+            mirror: r.mirror || "",
+            cm: r.hdr ? "hdr" : "srgb"
+        };
+    }
+
+    function draftRule(s: var, m: var): var {
+        const base = draft[m.name] ?? ruleFromMonitor(m);
+        const mode = parseMode(s.mode ?? "");
+        const pos = (s.position ?? "").match(/(-?\d+)x(-?\d+)/);
+        return {
+            output: m.name,
+            w: mode?.w ?? base.w,
+            h: mode?.h ?? base.h,
+            rate: mode ? Math.round(mode.rate * 100) / 100 : base.rate,
+            x: pos ? +pos[1] : base.x,
+            y: pos ? +pos[2] : base.y,
+            scale: s.scale ?? base.scale,
+            transform: s.transform ?? base.transform,
+            vrr: s.vrr === true ? 1 : s.vrr === false ? 0 : (s.vrr ?? base.vrr),
+            bitdepth: s.bitdepth ?? base.bitdepth,
+            hdr: (s.cm ?? "").includes("hdr"),
+            mirror: s.mirror && s.mirror !== "none" ? s.mirror : "",
+            disabled: !!s.disabled
+        };
+    }
+
+    function migrateProfiles(): void {
+        if (!settingsLoaded || !profilesLoaded || settings.profiles.length === 0)
+            return;
+        const taken = profileStore.profiles.map(p => p.name);
+        const added = settings.profiles.filter(p => !taken.includes(p.name)).map(p => {
+            const outputs = {};
+            for (const key of Object.keys(p.outputs))
+                outputs[key] = p.outputs[key].mode ? p.outputs[key] : sharedRule(p.outputs[key]);
+            return {
+                name: p.name,
+                outputs
+            };
+        });
+        if (added.length)
+            profileStore.profiles = [...profileStore.profiles, ...added];
+        settings.profiles = [];
+    }
+
     function saveProfile(): void {
         const outputs = {};
         for (const m of monitors)
-            outputs[desc(m)] = Object.assign({}, draft[m.name]);
+            outputs[desc(m)] = sharedRule(draft[m.name]);
         const names = monitors.filter(m => !draft[m.name]?.disabled).map(label);
-        let name = names.join(" + ") || Tr.tr("Layout");
-        const taken = settings.profiles.map(p => p.name);
+        let name = names.join(" + ") || qsTr("Layout");
+        const taken = profileStore.profiles.map(p => p.name);
         let n = 2;
         const base = name;
         while (taken.includes(name))
             name = `${base} (${n++})`;
-        settings.profiles = [...settings.profiles, {
+        profileStore.profiles = [...profileStore.profiles, {
                 name,
                 outputs
             }];
         if (settings.notifications)
-            Toaster.toast(Tr.tr("Profile saved"), name, "bookmark_add", Toast.Success);
+            Toaster.toast(qsTr("Profile saved"), name, "bookmark_add", Toast.Success);
     }
 
     function deleteProfile(name: string): void {
-        settings.profiles = settings.profiles.filter(p => p.name !== name);
+        profileStore.profiles = profileStore.profiles.filter(p => p.name !== name);
     }
 
     function profileMatches(p: var): bool {
@@ -375,9 +489,7 @@ Singleton {
         for (const m of monitors) {
             const r = p.outputs[desc(m)];
             if (r)
-                d[m.name] = Object.assign({}, r, {
-                    output: m.name
-                });
+                d[m.name] = draftRule(r, m);
         }
         draft = normalize(d);
         dirty = true;
@@ -460,7 +572,7 @@ Singleton {
                 Qt.callLater(() => {
                     const msg = (out.text + err.text).trim();
                     if (code !== 0 || (msg && msg !== "ok" && !/^ok/.test(msg)))
-                        root.fail(msg || Tr.tr("Hyprland rejected the change"));
+                        root.fail(msg || qsTr("Hyprland rejected the change"));
                     proc.onDone?.();
                     proc.destroy();
                 });
@@ -533,7 +645,7 @@ Singleton {
         interval: 1500
         onTriggered: {
             root.refresh();
-            if (root.settings.autoApply && !root.confirming)
+            if (root.profileStore.autoApply && !root.confirming)
                 autoApplyTimer.restart();
         }
     }
@@ -543,7 +655,7 @@ Singleton {
 
         interval: 800
         onTriggered: {
-            const p = root.settings.profiles.find(p => root.profileMatches(p));
+            const p = root.profileStore.profiles.find(p => root.profileMatches(p));
             if (!p)
                 return;
             root.loadProfile(p);
@@ -552,9 +664,23 @@ Singleton {
                 root.writeRules(Object.values(root.draft));
                 root.refresh();
                 if (root.settings.notifications)
-                    Toaster.toast(Tr.tr("Screens"), Tr.tr("Applied profile “%1”").arg(p.name), "desktop_windows", Toast.Info);
+                    Toaster.toast(qsTr("Screens"), qsTr("Applied profile “%1”").arg(p.name), "desktop_windows", Toast.Info);
             });
         }
+    }
+
+    FileView {
+        id: flightDeckFile
+
+        path: root.flightDeckPath
+        printErrors: false
+        blockLoading: true
+    }
+
+    Process {
+        command: ["sh", "-c", "command -v flightdeck"]
+        running: true
+        onExited: code => root.flightDeckInstalled = code === 0
     }
 
     FileView {
@@ -576,6 +702,8 @@ Singleton {
                 writeAdapter();
         }
         onLoaded: {
+            root.settingsLoaded = true;
+            root.migrateProfiles();
             if (root.settings.nightLight)
                 sunsetRestart.restart();
         }
@@ -589,6 +717,33 @@ Singleton {
             property int kelvin: 4000
             property int revertSeconds: 20
             property bool notifications: true
+            property bool dashboardTab: true
+            property string rulesTarget: "screens"
+        }
+    }
+
+    FileView {
+        path: `${root.configHome}/caelestia/display-profiles.json`
+        watchChanges: true
+        printErrors: false
+        onFileChanged: reload()
+        onAdapterUpdated: writeAdapter()
+        onLoadFailed: err => {
+            if (err === FileViewError.FileNotFound)
+                writeAdapter();
+            root.profilesLoaded = true;
+            root.migrateProfiles();
+        }
+        onLoaded: {
+            root.profilesLoaded = true;
+            root.migrateProfiles();
+        }
+
+        JsonAdapter {
+            id: profilesAdapter
+
+            property list<var> profiles: []
+            property bool autoApply: true
         }
     }
 
@@ -597,7 +752,7 @@ Singleton {
 
     Component.onCompleted: {
         refresh();
-        const comp = Qt.createComponent(Qt.resolvedUrl("../modules/bar/popouts/screens/ScOverlays.qml"));
+        const comp = Qt.createComponent(Qt.resolvedUrl("components/ScOverlays.qml"));
         if (comp.status === Component.Ready)
             overlays = comp.createObject(root);
         else

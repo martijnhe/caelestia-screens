@@ -5,10 +5,10 @@ import QtQuick.Layouts
 import Quickshell
 import Quickshell.Wayland
 import Caelestia.Config
-import Caelestia.I18n
 import qs.components
 import qs.components.controls
 import qs.services
+import martijnhe.screens
 
 // Full-screen overlays owned by the Displays service, so they survive the bar
 // popout closing while screens are rearranged:
@@ -115,14 +115,14 @@ Scope {
 
                         StyledText {
                             Layout.fillWidth: true
-                            text: Tr.tr("Keep these display settings?")
+                            text: qsTr("Keep these display settings?")
                             font: Tokens.font.body.builders.medium.weight(Font.Medium).build()
                         }
                     }
 
                     StyledText {
                         Layout.fillWidth: true
-                        text: Tr.trN("Reverting in %n second.", "Reverting in %n seconds.", Displays.countdown)
+                        text: (Displays.countdown === 1 ? qsTr("Reverting in %n second.", "", Displays.countdown) : qsTr("Reverting in %n seconds.", "", Displays.countdown))
                         color: Colours.palette.m3onSurfaceVariant
                         wrapMode: Text.Wrap
                     }
@@ -138,12 +138,12 @@ Scope {
 
                         TextButton {
                             type: TextButton.Text
-                            text: Tr.tr("Revert")
+                            text: qsTr("Revert")
                             onClicked: Displays.revert()
                         }
 
                         TextButton {
-                            text: Tr.tr("Keep")
+                            text: qsTr("Keep")
                             onClicked: Displays.keep()
                         }
                     }

@@ -1,28 +1,46 @@
 #!/bin/bash
-# Install the Screens widget into a user copy of the Caelestia shell config.
-# Safe to re-run, and coexists with other widgets installed the same way.
-# After a caelestia-shell update: rm -rf ~/.config/quickshell/caelestia, then re-run
-# the install.sh of every widget you use.
+# Install the Screens widget as a dashboard tab in a user copy of the Caelestia shell config.
+# Safe to re-run. With FlightDeck installed, monitor rules are shared with FlightDeck
+# (~/.config/caelestia/astra-flightdeck.lua); without it the widget keeps its own
+# ~/.config/caelestia/screens-monitors.lua.
+#   --standalone   keep the widget's own rules file even when FlightDeck is installed
 set -euo pipefail
 
 src=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 system=/etc/xdg/quickshell/caelestia
 conf=${XDG_CONFIG_HOME:-$HOME/.config}
 target=$conf/quickshell/caelestia
-shell_json=$conf/caelestia/shell.json
-
-[[ -d $system ]] || { echo "caelestia-shell not found at $system" >&2; exit 1; }
 
 if [[ ! -e $target ]]; then
+  [[ -d $system ]] || { echo "caelestia-shell not found at $system" >&2; exit 1; }
   echo "Creating user copy of the Caelestia config at $target"
   cp -r -- "$system" "$target"
 fi
-cp -r -- "$src/files/." "$target/"
-[[ -e $shell_json.pre-plugins ]] || cp -- "$shell_json" "$shell_json.pre-plugins" 2>/dev/null || true
-python3 "$src/patch.py" apply "$target" "$shell_json"
 
-# Monitor rules: the widget owns ~/.config/caelestia/screens-monitors.lua. Existing
-# hl.monitor() blocks in hypr-user.lua move there (originals kept for uninstall).
-python3 "$src/migrate-monitors.py" install "$conf/caelestia"
+mode=screens
+if [[ ${1:-} != --standalone ]] && command -v flightdeck >/dev/null; then
+  mode=flightdeck
+fi
 
-echo "Installed. Restart the shell: kill \$(pgrep -x qs); qs -c caelestia -n -d"
+python3 "$src/migrate-monitors.py" "install-$mode" "$conf/caelestia"
+python3 - "$conf/caelestia/screens.json" "$mode" <<'EOF'
+import json, sys
+from pathlib import Path
+path = Path(sys.argv[1])
+data = json.loads(path.read_text()) if path.exists() else {}
+data["rulesTarget"] = sys.argv[2]
+data.setdefault("dashboardTab", True)
+path.write_text(json.dumps(data, indent=4) + "\n")
+EOF
+python3 "$src/patch.py" apply "$target"
+
+if [[ $mode == flightdeck ]]; then
+  echo "Installed. Monitor rules are shared with FlightDeck (astra-flightdeck.lua)."
+else
+  echo "Installed. Monitor rules are in screens-monitors.lua."
+fi
+if grep -qx '[[:space:]]*id: screensTabComponent' "$target/modules/dashboard/Content.qml" 2>/dev/null; then
+  echo "The Screens tab is managed by the plugin switcher; set it in Nexus > Dashboard > Plugin switches."
+else
+  echo "The Screens tab is in the dashboard; turn it on or off in Nexus > Dashboard > Dashboard tabs."
+fi

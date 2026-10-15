@@ -4,6 +4,7 @@ import QtQuick
 import Caelestia.Config
 import qs.components
 import qs.services
+import martijnhe.screens
 
 // Screens drawn at their real size and position. Drag a tile and it snaps flush
 // to a neighbour when dropped; click a tile to select it.

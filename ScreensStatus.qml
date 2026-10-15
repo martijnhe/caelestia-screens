@@ -2,6 +2,7 @@ import QtQuick
 import Caelestia.Config
 import qs.components
 import qs.services
+import martijnhe.screens
 
 // Two-screen mark: a wide screen and a smaller one beside it, drawn in the bar
 // colour. Pulses while unconfirmed display changes are waiting for Keep.

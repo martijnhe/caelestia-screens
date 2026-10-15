@@ -1,6 +1,6 @@
 # Caelestia Screens widget
 
-Arrange and configure monitors from the [Caelestia shell](https://github.com/caelestia-dots/shell) bar.
+Arrange and configure monitors from a tab in the [Caelestia shell](https://github.com/caelestia-dots/shell) dashboard.
 A remake of the Omarchy [omarchy-screens](https://github.com/IM0001GT/omarchy-screens) plugin
 (MIT, by IM0001GT) for Caelestia and Hyprland's Lua config.
 
@@ -27,8 +27,11 @@ Built against `caelestia-shell` 2.5.0, `quickshell-git` 0.3.1 and Hyprland 0.56 
 - **Profiles**: save the current layout; Apply it later, or let **Apply on connect** restore it
   when exactly those screens are plugged in. Screens are matched by make, model and serial, so
   connector names can change
-- Bar icon: two screens; the small one fills while there are unapplied changes and the icon pulses
-  while waiting for Keep
+- **Dashboard tab**: shown next to the other dashboard tabs; turn it on or off in Nexus > Dashboard >
+  Dashboard tabs (or `dashboardTab` in `screens.json`)
+- **Works with FlightDeck**: when [FlightDeck](https://github.com/AstraSuite/FlightDeck) is installed, the
+  monitor rules are shared with it in `astra-flightdeck.lua`, so the two never fight over your layout, and
+  the tab has an Open in FlightDeck button
 
 ## Compared with omarchy-screens
 
@@ -67,31 +70,28 @@ screen brightness.
 
 ## Files it manages
 
-- `~/.config/caelestia/screens-monitors.lua`: the `hl.monitor()` rules. The installer moves your
-  existing rules from `hypr-user.lua` here and puts `require("screens-monitors")` in their place.
-  Rules for screens that aren't connected are kept
-- `~/.config/caelestia/screens.json`: profiles, night light and other settings
+- With FlightDeck: the `-- Monitors` section of `~/.config/caelestia/astra-flightdeck.lua`, shared with
+  FlightDeck. The installer moves your `hl.monitor()` rules there from `hypr-user.lua`
+- Without FlightDeck: `~/.config/caelestia/screens-monitors.lua`. The installer moves your rules there and
+  puts `require("screens-monitors")` in their place in `hypr-user.lua`
+- `~/.config/caelestia/display-profiles.json`: layout profiles and Apply on connect, shared with FlightDeck
+  (a profile saved in either one shows up in the other)
+- `~/.config/caelestia/screens.json`: night light, the tab toggle and where rules are written
 - `~/.config/caelestia/screens-backup/`: your original `hypr-user.lua`
 
 ## Install
 
+Installs into your user copy of the Caelestia shell (`~/.config/quickshell/caelestia`, created from
+`/etc/xdg/quickshell/caelestia` if it doesn't exist yet). The widget's QML goes to `modules/screens/`, and
+every line added to a shell file ends with `// plugin:screens`.
+
 ```bash
-./install.sh
+./install.sh               # shares monitor rules with FlightDeck when it's installed
+./install.sh --standalone  # keeps its own screens-monitors.lua even with FlightDeck
 kill $(pgrep -x qs); qs -c caelestia -n -d
 ```
 
-Adds the widget to the shared widget group above the clock (see `patch.py`), like the Syncthing,
-Sony, Tailscale and webcam widgets. After a `caelestia-shell` update, rebuild the user config:
-
-```bash
-rm -rf ~/.config/quickshell/caelestia
-for w in syncthing sony tailscale webcam screens; do ~/Projects/caelestia-$w/install.sh; done
-```
-
-Every install checks the shared **plugins** bar section (the widget group above the clock) and
-creates or repairs it if any part is missing: the group file, the two edits in `Bar.qml` (restored
-from Caelestia's own copy if they were mangled), and an enabled `plugins` entry in `bar.entries`.
-It ends with `Plugins bar section: OK`, or stops and says what's wrong.
+Re-running `install.sh` is safe and switches between the two modes.
 
 ## Placement (optional)
 
@@ -109,19 +109,20 @@ The tab is a fixed 840×480 pane with the same content as the popout.
 
 ```bash
 ./uninstall.sh
+kill $(pgrep -x qs); qs -c caelestia -n -d
 ```
 
-Moves your current monitor rules back into `hypr-user.lua` and removes the widget.
+Removes the tab and the `// plugin:screens` lines. Rules the widget owned go back into `hypr-user.lua`;
+rules shared with FlightDeck stay in `astra-flightdeck.lua`.
 
 ## Files
 
 | File | Purpose |
 | --- | --- |
-| `files/services/Displays.qml` | Singleton: monitor state, snapping, Lua rules, apply/keep/revert, profiles, night light |
-| `files/modules/bar/components/status/ScreensStatus.qml` | Bar icon |
-| `files/modules/bar/popouts/ScreensPopout.qml` | Popout |
-| `files/modules/bar/popouts/screens/ScLayout.qml` | Drag-and-snap layout canvas |
-| `files/modules/bar/popouts/screens/ScScreenSettings.qml` | Settings for the selected screen |
-| `files/modules/bar/popouts/screens/ScOverlays.qml` | Find labels and Keep/Revert card on every screen |
-| `migrate-monitors.py` | Moves monitor rules between `hypr-user.lua` and the widget's file |
-| `patch.py` | Adds/removes the marked edits to Caelestia files |
+| `Displays.qml` | Singleton: state and actions |
+| `ScreensPopout.qml` | The Screens pane shown in the dashboard tab |
+| `components/` | Pane sections and small components |
+| `patch.py` | Copies the QML into the shell and adds or removes the `// plugin:screens` lines |
+| `migrate-monitors.py` | Moves monitor rules between `hypr-user.lua`, `screens-monitors.lua` and `astra-flightdeck.lua` |
+| `install.sh` / `uninstall.sh` | Install or remove the tab |
+| `manifest.json`, `BarEntry.qml`, `ScreensStatus.qml` | Entry points for shells with the plugin system ([#1703](https://github.com/caelestia-dots/shell/pull/1703)); not used by `install.sh` |
